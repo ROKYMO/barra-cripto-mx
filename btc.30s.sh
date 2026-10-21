@@ -1,10 +1,10 @@
 #!/bin/bash
-# <xbar.title>Gadget BTC + ETH</xbar.title>
-# <xbar.version>v1.1</xbar.version>
+# <xbar.title>Gadget cripto (BTC, ETH, SOL)</xbar.title>
+# <xbar.version>v1.3</xbar.version>
 # <xbar.author>ROKYMO</xbar.author>
 # <xbar.author.github>ROKYMO</xbar.author.github>
 # <xbar.abouturl>https://github.com/ROKYMO/barra-cripto-mx</xbar.abouturl>
-# <xbar.desc>Cuánto BTC y ETH tienes, cuánto valen (MXN y USD), tu ganancia, el total y los precios en vivo.</xbar.desc>
+# <xbar.desc>Cuánto BTC, ETH y SOL tienes, cuánto valen (MXN y USD), tu ganancia, el total y los precios en vivo.</xbar.desc>
 # <xbar.dependencies>curl</xbar.dependencies>
 # <swiftbar.hideRunInTerminal>true</swiftbar.hideRunInTerminal>
 # <swiftbar.hideLastUpdated>true</swiftbar.hideLastUpdated>
@@ -22,12 +22,23 @@ export LC_ALL=C
 
 DIR="$HOME/.gadget_btc"
 DATOS="$DIR/datos.conf"
-CACHE="$DIR/cache_v2.txt"
+CACHE="$DIR/cache_v3.txt"
 COMPRAS="$DIR/compras.csv"
-UA="GadgetBTC/1.1"
+UA="GadgetBTC/1.3"
 YO="$0"
+DONDE="(suma tu wallet y tu exchange)"
 mkdir -p "$DIR"
-rm -f "$DIR/cache.txt"   # caché de la versión 1.0
+rm -f "$DIR/cache.txt" "$DIR/cache_v2.txt"   # cachés de versiones anteriores
+
+# ---------- monedas ----------
+MONEDAS="BTC ETH SOL"
+kraken_par() { case "$1" in BTC) echo XXBTZUSD ;; ETH) echo XETHZUSD ;; SOL) echo SOLUSD ;; esac; }
+gecko_id()   { case "$1" in BTC) echo bitcoin ;; ETH) echo ethereum ;; SOL) echo solana ;; esac; }
+ejemplo()    { case "$1" in BTC) echo 0.00067 ;; ETH) echo 0.015 ;; SOL) echo 0.5 ;; esac; }
+limite()     { case "$1" in BTC) echo 1 ;; ETH) echo 10 ;; SOL) echo 200 ;; esac; }
+libro()      { printf '%s_mxn' "$(printf '%s' "$1" | tr 'A-Z' 'a-z')"; }
+clave_inv()  { if [ "$1" = BTC ]; then echo INVERTIDO_USD; else echo "INVERTIDO_$1_USD"; fi; }
+moneda_ok()  { case " $MONEDAS " in *" $1 "*) echo "$1" ;; *) echo BTC ;; esac; }
 
 # ---------- utilidades ----------
 leer() { [ -f "$DATOS" ] && sed -n "s/^$1=//p" "$DATOS" | tail -n 1 | tr -d ' \r\t'; }
@@ -43,9 +54,6 @@ guardar() { # clave valor
     END { if (!hecho) print k "=" v }' "$DATOS" > "$tmp" && cat "$tmp" > "$DATOS"
   rm -f "$tmp"
 }
-
-clave_cant() { if [ "$1" = ETH ]; then echo ETH; else echo BTC; fi; }
-clave_inv()  { if [ "$1" = ETH ]; then echo INVERTIDO_ETH_USD; else echo INVERTIDO_USD; fi; }
 
 es_num() { case "$1" in ''|.|*[!0-9.]*|*.*.*) return 1 ;; esac; return 0; }
 
@@ -64,7 +72,7 @@ num_usd() { # 1,234.50 -> 1234.50 | 1,320 -> 1320 | 55,20 -> 55.20
 
 sumar() { awk -v a="$1" -v b="$2" -v d="$3" 'BEGIN { printf "%." d "f", a + b }'; }
 mayor() { awk -v a="$1" -v b="$2" 'BEGIN { exit !(a + 0 > b + 0) }'; }
-precio_ok() { [ -n "$1" ] && awk -v x="$1" 'BEGIN { exit !(x + 0 > 1) }'; }
+precio_ok() { [ -n "$1" ] && awk -v x="$1" 'BEGIN { exit !(x + 0 > 0.01) }'; }
 
 hora_de() { # epoch -> "21:06" (o "18/10 21:06" si no es de hoy)
   [ -n "$1" ] || return 0
@@ -74,7 +82,7 @@ hora_de() { # epoch -> "21:06" (o "18/10 21:06" si no es de hoy)
   date -r "$1" "$f" 2>/dev/null || date -d "@$1" "$f" 2>/dev/null
 }
 
-migrar_compras() { # historial v1.0 (solo BTC) -> v1.1 (con columna moneda)
+migrar_compras() { # historial v1.0 (solo BTC) -> con columna moneda
   local tmp
   [ -f "$COMPRAS" ] || return 0
   if [ "$(head -n 1 "$COMPRAS")" = "fecha,btc,usd,precio_btc_usd" ]; then
@@ -104,9 +112,7 @@ avisar() {
 }
 
 # ---------- acciones del menú ----------
-M="$2"; [ "$M" = ETH ] || M=BTC
-if [ "$M" = ETH ]; then EJ="0.015"; LIM=10; else EJ="0.00067"; LIM=1; fi
-KC=$(clave_cant "$M"); KI=$(clave_inv "$M")
+M=$(moneda_ok "$2"); EJ=$(ejemplo "$M"); LIM=$(limite "$M"); KC="$M"; KI=$(clave_inv "$M")
 
 case "$1" in
   compra)
@@ -125,14 +131,13 @@ case "$1" in
     guardar "$KI" "$ni"
     migrar_compras
     [ -f "$COMPRAS" ] || echo "fecha,moneda,cantidad,usd,precio_usd" > "$COMPRAS"
-    if [ "$M" = ETH ]; then p=$(cache E_USD); else p=$(cache B_USD); fi
-    echo "$(date '+%Y-%m-%d %H:%M'),$M,$b,$u,$p" >> "$COMPRAS"
+    echo "$(date '+%Y-%m-%d %H:%M'),$M,$b,$u,$(cache "${M}_USD")" >> "$COMPRAS"
     avisar "Compra guardada. Ahora tienes $nb $M."
     exit 0 ;;
 
   ajustar)
     b=$(pedir "¿Cuántos $M tienes en total?
-(suma tu wallet y tu exchange)" "$(leer "$KC")") || exit 0
+$DONDE" "$(leer "$KC")") || exit 0
     b=$(num_cripto "$b")
     es_num "$b" || { alerta "Cantidad no válida" "Escribe solo el número de $M, ej. $EJ"; exit 0; }
     u=$(pedir "¿Cuántos USD has metido en total a $M?
@@ -147,7 +152,7 @@ case "$1" in
   historial)
     migrar_compras
     if [ -f "$COMPRAS" ]; then open "$COMPRAS"
-    else alerta "Aún no hay compras" "Usa «Registrar compra…» después de cada compra y aquí verás el historial."
+    else alerta "Aún no hay compras" "Usa «Registrar compra» después de cada compra y aquí verás el historial."
     fi
     exit 0 ;;
 
@@ -161,44 +166,55 @@ case "$1" in
 esac
 
 # ---------- precios ----------
-TK=$(mktemp "${TMPDIR:-/tmp}/gadgetbtc.XXXXXX")
-TB=$(mktemp "${TMPDIR:-/tmp}/gadgetbtc.XXXXXX")
-TE=$(mktemp "${TMPDIR:-/tmp}/gadgetbtc.XXXXXX")
-curl -s -m 6 -A "$UA" "https://api.kraken.com/0/public/Ticker?pair=XBTUSD,ETHUSD" > "$TK" 2>/dev/null &
-curl -s -m 6 -A "$UA" "https://api.bitso.com/v3/ticker/?book=btc_mxn" > "$TB" 2>/dev/null &
-curl -s -m 6 -A "$UA" "https://api.bitso.com/v3/ticker/?book=eth_mxn" > "$TE" 2>/dev/null &
+TD=$(mktemp -d "${TMPDIR:-/tmp}/gadgetbtc.XXXXXX")
+PARES=""; IDS=""
+for m in $MONEDAS; do
+  PARES="$PARES${PARES:+,}${m/BTC/XBT}USD"
+  IDS="$IDS${IDS:+,}$(gecko_id "$m")"
+  curl -s -m 6 -A "$UA" "https://api.bitso.com/v3/ticker/?book=$(libro "$m")" > "$TD/$m" 2>/dev/null &
+done
+curl -s -m 6 -A "$UA" "https://api.kraken.com/0/public/Ticker?pair=$PARES" > "$TD/kraken" 2>/dev/null &
 wait
-KR=$(tr -d '\n' < "$TK"); BB=$(tr -d '\n' < "$TB"); BE=$(tr -d '\n' < "$TE")
-rm -f "$TK" "$TB" "$TE"
+KR=$(tr -d '\n' < "$TD/kraken")
 
 kraken_usd() { printf '%s' "$KR" | sed -E -n "s/.*\"$1\":\{[^}]*\"c\":\[\"([0-9.]+)\".*/\1/p"; }
 bitso() { printf '%s' "$1" | sed -E -n "s/.*\"$2\":\"(-?[0-9.]+)\".*/\1/p"; }
 cambio24() { [ -n "$1" ] && [ -n "$2" ] && awk -v l="$1" -v c="$2" 'BEGIN { if (l - c > 0) printf "%.4f", c / (l - c) * 100 }'; }
 gecko() { printf '%s' "$CG" | sed -E -n "s/.*\"$1\":\{[^}]*\"$2\":(-?[0-9.eE+-]+).*/\1/p"; }
 
-B_USD=$(kraken_usd XXBTZUSD); precio_ok "$B_USD" || B_USD=""
-E_USD=$(kraken_usd XETHZUSD); precio_ok "$E_USD" || E_USD=""
-B_MXN=$(bitso "$BB" last);    precio_ok "$B_MXN" || B_MXN=""
-E_MXN=$(bitso "$BE" last);    precio_ok "$E_MXN" || E_MXN=""
-B_CHG=$( [ -n "$B_MXN" ] && cambio24 "$B_MXN" "$(bitso "$BB" change_24)")
-E_CHG=$( [ -n "$E_MXN" ] && cambio24 "$E_MXN" "$(bitso "$BE" change_24)")
-B_FU=Kraken; E_FU=Kraken; B_FM=Bitso; E_FM=Bitso
+i=0; FALTA=0
+for m in $MONEDAS; do
+  BJ=$(tr -d '\n' < "$TD/$m")
+  U[$i]=$(kraken_usd "$(kraken_par "$m")"); precio_ok "${U[$i]}" || U[$i]=""
+  X[$i]=$(bitso "$BJ" last);               precio_ok "${X[$i]}" || X[$i]=""
+  C[$i]=""; [ -n "${X[$i]}" ] && C[$i]=$(cambio24 "${X[$i]}" "$(bitso "$BJ" change_24)")
+  SU[$i]=Kraken; SX[$i]=Bitso
+  { [ -z "${U[$i]}" ] || [ -z "${X[$i]}" ]; } && FALTA=1
+  i=$((i + 1))
+done
+rm -rf "$TD"
 
-if [ -z "$B_USD" ] || [ -z "$B_MXN" ] || [ -z "$E_USD" ] || [ -z "$E_MXN" ]; then
-  CG=$(curl -s -m 6 -A "$UA" "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd,mxn&include_24hr_change=true" 2>/dev/null | tr -d '\n')
-  if [ -z "$B_USD" ]; then B_USD=$(gecko bitcoin usd);  precio_ok "$B_USD" || B_USD=""; B_FU=CoinGecko; fi
-  if [ -z "$E_USD" ]; then E_USD=$(gecko ethereum usd); precio_ok "$E_USD" || E_USD=""; E_FU=CoinGecko; fi
-  if [ -z "$B_MXN" ]; then B_MXN=$(gecko bitcoin mxn);  precio_ok "$B_MXN" || B_MXN=""; B_FM=CoinGecko; B_CHG=$(gecko bitcoin mxn_24h_change); fi
-  if [ -z "$E_MXN" ]; then E_MXN=$(gecko ethereum mxn); precio_ok "$E_MXN" || E_MXN=""; E_FM=CoinGecko; E_CHG=$(gecko ethereum mxn_24h_change); fi
+if [ "$FALTA" = 1 ]; then
+  CG=$(curl -s -m 6 -A "$UA" "https://api.coingecko.com/api/v3/simple/price?ids=$IDS&vs_currencies=usd,mxn&include_24hr_change=true" 2>/dev/null | tr -d '\n')
+  i=0
+  for m in $MONEDAS; do
+    g=$(gecko_id "$m")
+    if [ -z "${U[$i]}" ]; then U[$i]=$(gecko "$g" usd); precio_ok "${U[$i]}" || U[$i]=""; SU[$i]=CoinGecko; fi
+    if [ -z "${X[$i]}" ]; then X[$i]=$(gecko "$g" mxn); precio_ok "${X[$i]}" || X[$i]=""; SX[$i]=CoinGecko; C[$i]=$(gecko "$g" mxn_24h_change); fi
+    i=$((i + 1))
+  done
 fi
 
+# una línea por moneda: m|cantidad|invertido|usd|mxn|chg|fuenteUSD|fuenteMXN|cacheUSD|cacheMXN|cacheCHG|cacheT|cacheHora
+REG=""; i=0
+for m in $MONEDAS; do
+  ct=$(cache "${m}_T")
+  REG="$REG${REG:+;}$m|$(leer "$m")|$(leer "$(clave_inv "$m")")|${U[$i]}|${X[$i]}|${C[$i]}|${SU[$i]}|${SX[$i]}|$(cache "${m}_USD")|$(cache "${m}_MXN")|$(cache "${m}_CHG")|$ct|$(hora_de "$ct")"
+  i=$((i + 1))
+done
+
 # ---------- menú ----------
-awk -v btc="$(leer BTC)" -v binv="$(leer INVERTIDO_USD)" -v eth="$(leer ETH)" -v einv="$(leer INVERTIDO_ETH_USD)" \
-    -v barra="$(leer BARRA)" -v oc="$(leer OCULTAR)" \
-    -v bfu="$B_USD" -v bfm="$B_MXN" -v bfc="$B_CHG" -v bsu="$B_FU" -v bsm="$B_FM" \
-    -v efu="$E_USD" -v efm="$E_MXN" -v efc="$E_CHG" -v esu="$E_FU" -v esm="$E_FM" \
-    -v bcu="$(cache B_USD)" -v bcm="$(cache B_MXN)" -v bcc="$(cache B_CHG)" -v bct="$(cache B_T)" -v bch="$(hora_de "$(cache B_T)")" \
-    -v ecu="$(cache E_USD)" -v ecm="$(cache E_MXN)" -v ecc="$(cache E_CHG)" -v ect="$(cache E_T)" -v ech="$(hora_de "$(cache E_T)")" \
+awk -v reg="$REG" -v barra="$(leer BARRA)" -v oc="$(leer OCULTAR)" \
     -v ahora="$(date +%s)" -v hnow="$(date +%H:%M)" -v cachef="$CACHE" -v yo="$YO" '
 function absv(n) { return n < 0 ? -n : n }
 function fmt(n, d,    s, p, ip, fp, out, neg) {
@@ -211,6 +227,7 @@ function fmt(n, d,    s, p, ip, fp, out, neg) {
   if (neg && (ip out fp) ~ /[1-9]/) return "-" ip out fp
   return ip out fp
 }
+function precio(n) { return fmt(n, n < 1000 ? 2 : 0) }
 function pct(n,    r) {
   r = sprintf("%.1f", n) + 0
   return (r > 0 ? "+" : (r < 0 ? "-" : "")) fmt(absv(r), 1) "%"
@@ -223,89 +240,95 @@ function flecha(p) { return (p >= 0 ? "▲" : "▼") fmt(absv(p), 1) "%" }
 function accion(txt, args, icono, extra) {
   print txt " | bash=\"" yo "\" " args " terminal=false refresh=true sfimage=" icono (extra != "" ? " " extra : "")
 }
-function moneda(p, sim) { # "₿ $11,087 ▲0.2%" si tienes; si no, solo el precio en USD
-  if (CANT[p] > 0 && HAYP[p]) return sim " $" fmt(VMXN[p], 0) (CONG[p] ? " " flecha(GANP[p]) : "")
-  return sim " US$" fmt(USD[p], 0)
+function linea(m) { # "₿ $11,087 ▲0.2%" si tienes; si no, solo el precio en USD
+  if (CANT[m] > 0 && HAYP[m]) return SIM[m] " $" fmt(VMXN[m], 0) (CONG[m] ? " " flecha(GANP[m]) : "")
+  return SIM[m] " US$" precio(USD[m])
 }
-function preparar(p,fu, fm, fc, su, sm, cu, cm, cc, ct, ch) {
-  if (fu != "" && fm != "") {
-    USD[p] = fu; MXN[p] = fm; CHG[p] = fc; T[p] = ahora; H[p] = hnow; VIEJO[p] = 0
-    USADA[su] = 1; USADA[sm] = 1
-  } else if (cu != "" && cm != "") {
-    USD[p] = cu; MXN[p] = cm; CHG[p] = cc; T[p] = ct; H[p] = ch; VIEJO[p] = 1
+function seccion(m) {
+  print SIM[m] " " NOM[m]
+  if (CANT[m] <= 0) {
+    accion("Configura cuántos " m " tienes…", "param1=ajustar param2=" m, "gearshape", "")
   } else {
-    USD[p] = ""; MXN[p] = ""; CHG[p] = ""; T[p] = ""; H[p] = ""; VIEJO[p] = 0
-  }
-  HAYP[p] = (USD[p] + 0 > 0 && MXN[p] + 0 > 0)
-  if (HAYP[p]) {   # guarda el último precio bueno para cuando no haya internet
-    print p "_USD=" USD[p] > cachef; print p "_MXN=" MXN[p] > cachef
-    print p "_CHG=" CHG[p] > cachef; print p "_T=" T[p] > cachef
-  }
-  if (CANT[p] > 0 && HAYP[p]) { VMXN[p] = CANT[p] * MXN[p]; VUSD[p] = CANT[p] * USD[p] }
-  else { VMXN[p] = 0; VUSD[p] = 0 }
-  CONG[p] = (CANT[p] > 0 && HAYP[p] && INV[p] > 0)
-  if (CONG[p]) { GAN[p] = VUSD[p] - INV[p]; GANP[p] = GAN[p] / INV[p] * 100 }
-}
-function seccion(p, sim, nombre, cripto) {
-  print sim " " nombre
-  if (CANT[p] <= 0) {
-    accion("Configura cuántos " cripto " tienes…", "param1=ajustar param2=" cripto, "gearshape", "")
-  } else {
-    print "Tienes: " o(sprintf("%.8f", CANT[p])) " " cripto
-    if (HAYP[p]) print "Valen: " o(dinero(VMXN[p], 0)) " MXN  ·  " o(dinero(VUSD[p], 2)) " USD"
-    if (INV[p] > 0) {
-      print "Invertido: " o(dinero(INV[p], 2)) " USD"
-      if (CONG[p]) print "Ganancia: " o(ganancia(GAN[p])) " (" pct(GANP[p]) ") | " color(GAN[p])
-      print "Costo promedio: " o(dinero(INV[p] / CANT[p], 0)) " USD por " cripto
+    print "Tienes: " o(sprintf("%.8f", CANT[m])) " " m
+    if (HAYP[m]) print "Valen: " o(dinero(VMXN[m], 0)) " MXN  ·  " o(dinero(VUSD[m], 2)) " USD"
+    if (INV[m] > 0) {
+      print "Invertido: " o(dinero(INV[m], 2)) " USD"
+      if (CONG[m]) print "Ganancia: " o(ganancia(GAN[m])) " (" pct(GANP[m]) ") | " color(GAN[m])
+      print "Costo promedio: " o(dinero(INV[m] / CANT[m], (INV[m] / CANT[m]) < 1000 ? 2 : 0)) " USD por " m
     }
   }
-  if (HAYP[p]) {
-    print "Precio: " dinero(USD[p], 0) " USD  ·  " dinero(MXN[p], 0) " MXN"
-    if (CHG[p] != "") print "Últimas 24 h: " pct(CHG[p] + 0) " | " color(CHG[p] + 0)
+  if (HAYP[m]) {
+    print "Precio: $" precio(USD[m]) " USD  ·  $" precio(MXN[m]) " MXN"
+    if (CHG[m] != "") print "Últimas 24 h: " pct(CHG[m] + 0) " | " color(CHG[m] + 0)
   } else print "Sin precio por ahora | " GRIS
 }
 BEGIN {
   VERDE = "color=#1f8f4e,#5cd38a"; ROJO = "color=#c9372c,#ff6b5e"; GRIS = "color=#8e8e93,#8e8e93"
   OCULTO = "•••••"
+  SIM["BTC"] = "₿"; NOM["BTC"] = "Bitcoin";  ICO["BTC"] = "bitcoinsign.circle"
+  SIM["ETH"] = "Ξ"; NOM["ETH"] = "Ethereum"; ICO["ETH"] = "diamond"
+  SIM["SOL"] = "◎"; NOM["SOL"] = "Solana";   ICO["SOL"] = "s.circle"
   ocu = (oc == "1")
   if (barra == "") barra = "rotar"
   if (barra == "ambos") barra = "total"
-  CANT["B"] = btc + 0; INV["B"] = binv + 0; CANT["E"] = eth + 0; INV["E"] = einv + 0
-  preparar("B", bfu, bfm, bfc, bsu, bsm, bcu, bcm, bcc, bct, bch)
-  preparar("E", efu, efm, efc, esu, esm, ecu, ecm, ecc, ect, ech)
+
+  n = split(reg, R, ";")
+  for (k = 1; k <= n; k++) {
+    split(R[k], f, "|"); m = f[1]; ORD[k] = m
+    CANT[m] = f[2] + 0; INV[m] = f[3] + 0
+    if (f[4] != "" && f[5] != "") {           # precio fresco
+      USD[m] = f[4]; MXN[m] = f[5]; CHG[m] = f[6]; T[m] = ahora; H[m] = hnow; VIEJO[m] = 0
+      USADA[f[7]] = 1; USADA[f[8]] = 1
+    } else if (f[9] != "" && f[10] != "") {   # último precio guardado
+      USD[m] = f[9]; MXN[m] = f[10]; CHG[m] = f[11]; T[m] = f[12]; H[m] = f[13]; VIEJO[m] = 1
+    } else { USD[m] = ""; MXN[m] = ""; CHG[m] = ""; VIEJO[m] = 0 }
+    HAYP[m] = (USD[m] + 0 > 0 && MXN[m] + 0 > 0)
+    if (HAYP[m]) {   # guarda el último precio bueno para cuando no haya internet
+      print m "_USD=" USD[m] > cachef; print m "_MXN=" MXN[m] > cachef
+      print m "_CHG=" CHG[m] > cachef; print m "_T=" T[m] > cachef
+    }
+    VMXN[m] = 0; VUSD[m] = 0
+    if (CANT[m] > 0 && HAYP[m]) { VMXN[m] = CANT[m] * MXN[m]; VUSD[m] = CANT[m] * USD[m] }
+    CONG[m] = (CANT[m] > 0 && HAYP[m] && INV[m] > 0)
+    if (CONG[m]) { GAN[m] = VUSD[m] - INV[m]; GANP[m] = GAN[m] / INV[m] * 100 }
+  }
   close(cachef)
 
-  tieneB = (CANT["B"] > 0); tieneE = (CANT["E"] > 0); viejo = (VIEJO["B"] || VIEJO["E"])
-  totMXN = VMXN["B"] + VMXN["E"]; totUSD = VUSD["B"] + VUSD["E"]
-  invT = 0; valT = 0
-  if (CONG["B"]) { invT += INV["B"]; valT += VUSD["B"] }
-  if (CONG["E"]) { invT += INV["E"]; valT += VUSD["E"] }
+  # totales
+  tienen = 0; sinprecio = 0; viejo = 0; nviejo = 0; pre = ""; totMXN = 0; totUSD = 0; invT = 0; valT = 0
+  for (k = 1; k <= n; k++) {
+    m = ORD[k]
+    if (VIEJO[m]) { viejo = 1; LV[++nviejo] = m }
+    if (CANT[m] > 0) { tienen++; pre = pre SIM[m]; if (!HAYP[m]) sinprecio = 1 }
+    totMXN += VMXN[m]; totUSD += VUSD[m]
+    if (CONG[m]) { invT += INV[m]; valT += VUSD[m] }
+  }
   if (invT > 0) { ganT = valT - invT; ganTP = ganT / invT * 100 }
+  totalOK = (tienen > 0 && !sinprecio)
+  lineaTotal = pre " $" fmt(totMXN, 0) (invT > 0 ? " " flecha(ganTP) : "")
 
   # --- título en la barra (si hay varias líneas, SwiftBar las va rotando) ---
-  totalOK = ((tieneB || tieneE) && (!tieneB || HAYP["B"]) && (!tieneE || HAYP["E"]))
-  lineaTotal = (tieneB && tieneE ? "₿Ξ" : (tieneE ? "Ξ" : "₿")) " $" fmt(totMXN, 0) (invT > 0 ? " " flecha(ganTP) : "")
-  n = 0
-  if (!HAYP["B"]) TIT[++n] = "₿ sin red"
-  else if (ocu) {
-    TIT[++n] = "₿ US$" fmt(USD["B"], 0)
-    if (HAYP["E"]) TIT[++n] = "Ξ US$" fmt(USD["E"], 0)
+  nt = 0
+  if (!HAYP["BTC"]) TIT[++nt] = "₿ sin red"
+  else if (ocu) { for (k = 1; k <= n; k++) if (HAYP[ORD[k]]) TIT[++nt] = SIM[ORD[k]] " US$" precio(USD[ORD[k]]) }
+  else if (barra == "precio") TIT[++nt] = "₿ US$" precio(USD["BTC"])
+  else if (barra == "precios") {
+    t = ""
+    for (k = 1; k <= n; k++) if (HAYP[ORD[k]]) t = t (t != "" ? "  " : "") SIM[ORD[k]] " " precio(USD[ORD[k]])
+    TIT[++nt] = t
   }
-  else if (barra == "precio") TIT[++n] = "₿ US$" fmt(USD["B"], 0)
-  else if (barra == "precios") TIT[++n] = "₿ " fmt(USD["B"], 0) (HAYP["E"] ? "  Ξ " fmt(USD["E"], 0) : "")
-  else if (barra == "valor") TIT[++n] = moneda("B", "₿")
-  else if (barra == "total") TIT[++n] = (totalOK ? lineaTotal : "₿ US$" fmt(USD["B"], 0))
-  else {   # rotar: total, BTC y ETH
-    if (tieneB && tieneE && totalOK) TIT[++n] = lineaTotal
-    TIT[++n] = moneda("B", "₿")
-    if (HAYP["E"]) TIT[++n] = moneda("E", "Ξ")
+  else if (barra == "valor") TIT[++nt] = linea("BTC")
+  else if (barra == "total") TIT[++nt] = (totalOK ? lineaTotal : "₿ US$" precio(USD["BTC"]))
+  else {   # rotar: el total y luego cada moneda que tienes
+    if (tienen > 1 && totalOK) TIT[++nt] = lineaTotal
+    for (k = 1; k <= n; k++) { m = ORD[k]; if (CANT[m] > 0 && HAYP[m]) TIT[++nt] = linea(m) }
+    if (nt == 0) TIT[++nt] = "₿ US$" precio(USD["BTC"])
   }
-  for (i = 1; i <= n; i++) print TIT[i] " | dropdown=false" (viejo ? " " GRIS : "")
+  for (k = 1; k <= nt; k++) print TIT[k] " | dropdown=false" (viejo ? " " GRIS : "")
   print "---"
 
   # --- total de cripto ---
-  # (solo si hay precio de todo lo que tienes, para no mostrar un total incompleto)
-  if ((tieneB || tieneE) && (!tieneB || HAYP["B"]) && (!tieneE || HAYP["E"])) {
+  if (totalOK) {
     print "Total en cripto: " o(dinero(totMXN, 0)) " MXN  ·  " o(dinero(totUSD, 2)) " USD"
     if (invT > 0) {
       print "Invertido total: " o(dinero(invT, 2)) " USD"
@@ -314,34 +337,35 @@ BEGIN {
     print "---"
   }
 
-  seccion("B", "₿", "Bitcoin", "BTC");  print "---"
-  seccion("E", "Ξ", "Ethereum", "ETH"); print "---"
+  for (k = 1; k <= n; k++) { seccion(ORD[k]); print "---" }
 
   # --- acciones ---
-  accion("Registrar compra de BTC…", "param1=compra param2=BTC", "plus.circle", "")
-  accion("Registrar compra de ETH…", "param1=compra param2=ETH", "plus.circle", "")
+  print "Registrar compra | sfimage=plus.circle"
+  for (k = 1; k <= n; k++) accion("--" ORD[k] "…", "param1=compra param2=" ORD[k], ICO[ORD[k]], "")
   print "Ajustar totales | sfimage=slider.horizontal.3"
-  accion("--BTC…", "param1=ajustar param2=BTC", "bitcoinsign.circle", "")
-  accion("--ETH…", "param1=ajustar param2=ETH", "diamond", "")
+  for (k = 1; k <= n; k++) accion("--" ORD[k] "…", "param1=ajustar param2=" ORD[k], ICO[ORD[k]], "")
   accion("Historial de compras", "param1=historial", "list.bullet.rectangle", "")
   print "Mostrar en la barra | sfimage=menubar.rectangle"
-  accion("--Rotar: total, BTC y ETH", "param1=barra param2=rotar", "arrow.triangle.2.circlepath", (barra == "rotar" ? "checked=true" : ""))
-  accion("--Solo el total BTC + ETH (MXN) y ganancia", "param1=barra param2=total", "sum", (barra == "total" ? "checked=true" : ""))
+  accion("--Rotar: total y cada moneda", "param1=barra param2=rotar", "arrow.triangle.2.circlepath", (barra == "rotar" ? "checked=true" : ""))
+  accion("--Solo el total (MXN) y ganancia", "param1=barra param2=total", "sum", (barra == "total" ? "checked=true" : ""))
   accion("--Solo BTC (MXN) y ganancia", "param1=barra param2=valor", "bitcoinsign.circle", (barra == "valor" ? "checked=true" : ""))
   accion("--Precio de BTC (USD)", "param1=barra param2=precio", "chart.line.uptrend.xyaxis", (barra == "precio" ? "checked=true" : ""))
-  accion("--Precios de BTC y ETH (USD)", "param1=barra param2=precios", "chart.bar", (barra == "precios" ? "checked=true" : ""))
+  accion("--Precios de todas (USD)", "param1=barra param2=precios", "chart.bar", (barra == "precios" ? "checked=true" : ""))
   if (ocu) accion("Mostrar montos", "param1=ocultar", "eye", "")
   else accion("Ocultar montos", "param1=ocultar", "eye.slash", "")
-  print "Abrir Kraken Pro | href=https://pro.kraken.com/app/trade/btc-usd sfimage=arrow.up.right.square"
   print "---"
-  if (VIEJO["B"] && VIEJO["E"]) print "Sin conexión · último precio: " H["B"] " | size=11 " GRIS
-  else if (viejo) print "Precio de " (VIEJO["B"] ? "BTC" : "ETH") " sin actualizar desde " (VIEJO["B"] ? H["B"] : H["E"]) " | size=11 " GRIS
-  if (!viejo && (HAYP["B"] || HAYP["E"])) {
-    f = ""
-    if (USADA["Kraken"]) f = f (f != "" ? " / " : "") "Kraken"
-    if (USADA["Bitso"]) f = f (f != "" ? " / " : "") "Bitso"
-    if (USADA["CoinGecko"]) f = f (f != "" ? " / " : "") "CoinGecko"
-    print "Actualizado " hnow " · " f " | size=11 " GRIS
+  frescas = 0; for (k = 1; k <= n; k++) if (HAYP[ORD[k]] && !VIEJO[ORD[k]]) frescas++
+  if (viejo && frescas == 0) print "Sin conexión · último precio: " H[LV[1]] " | size=11 " GRIS
+  else if (viejo) {
+    l = ""; for (k = 1; k <= nviejo; k++) l = l (k > 1 ? ", " : "") LV[k]
+    print "Precio de " l " sin actualizar desde " H[LV[1]] " | size=11 " GRIS
+  }
+  if (frescas > 0) {
+    fu = ""
+    if (USADA["Kraken"]) fu = fu (fu != "" ? " / " : "") "Kraken"
+    if (USADA["Bitso"]) fu = fu (fu != "" ? " / " : "") "Bitso"
+    if (USADA["CoinGecko"]) fu = fu (fu != "" ? " / " : "") "CoinGecko"
+    print "Actualizado " hnow " · " fu " | size=11 " GRIS
   }
   print "Actualizar ahora | refresh=true sfimage=arrow.clockwise"
 }'

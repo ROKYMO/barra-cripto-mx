@@ -47,8 +47,8 @@ Para cambiar cada cuánto se actualiza, renombra el archivo: `btc.1m.sh` (cada m
 
 ## Fuentes de precios
 
-- Precio en USD: [Kraken](https://www.kraken.com) (API pública).
-- Precio en MXN y cambio en 24 h: [Bitso](https://bitso.com) (API pública).
+- Precio en USD: Kraken (API pública).
+- Precio en MXN y cambio en 24 h: Bitso (API pública).
 - Respaldo si alguna falla: [CoinGecko](https://www.coingecko.com).
 
 El menú indica de dónde salió cada precio. El valor en MXN usa el precio de Bitso, así que puede diferir un poco de convertir el precio en USD con el tipo de cambio oficial.
