@@ -1,6 +1,6 @@
 # Barra Cripto MX
 
-Tu BTC y ETH en la barra de menú del Mac: cuánto tienes, cuánto vale en **pesos mexicanos** y en dólares, tu ganancia y los precios en vivo.
+Tu BTC, ETH y SOL en la barra de menú del Mac: cuánto tienes, cuánto vale en **pesos mexicanos** y en dólares, tu ganancia y los precios en vivo.
 
 Es un plugin para [SwiftBar](https://github.com/swiftbar/SwiftBar), pensado para quien compra cripto cada semana (DCA) y quiere ver su avance sin abrir el exchange.
 
@@ -8,9 +8,9 @@ Es un plugin para [SwiftBar](https://github.com/swiftbar/SwiftBar), pensado para
 
 ## Qué hace
 
-- La barra va rotando entre **el total de tu cripto**, **tu BTC** y **tu ETH**, en MXN y con tu ganancia o pérdida (por ejemplo `₿Ξ $21,204 ▲2.3%`).
+- La barra va rotando entre **el total de tu cripto** y **cada moneda que tienes** (BTC, ETH y SOL), en MXN y con tu ganancia o pérdida (por ejemplo `₿Ξ◎ $21,204 ▲2.3%`).
 - El menú muestra, para cada moneda: cuánto tienes, cuánto vale (MXN y USD), cuánto has invertido, tu ganancia, tu costo promedio, el precio y el cambio en 24 h.
-- **Registrar compra…**: después de cada compra escribes cuánto compraste y cuánto pagaste; se suma a tus totales y se guarda un historial (CSV) que puedes abrir en Numbers o Excel.
+- **Registrar compra**: después de cada compra escribes cuánto compraste y cuánto pagaste; se suma a tus totales y se guarda un historial (CSV) que puedes abrir en Numbers o Excel.
 - **Ocultar montos**: para cuando compartes pantalla.
 - **Sin internet** muestra el último precio guardado, en gris y con la hora.
 - Se actualiza cada 30 segundos.
@@ -25,16 +25,16 @@ Es un plugin para [SwiftBar](https://github.com/swiftbar/SwiftBar), pensado para
 1. Instala SwiftBar: descárgalo de [sus releases en GitHub](https://github.com/swiftbar/SwiftBar/releases) o con `brew install swiftbar`.
 2. Al abrirlo te pide una carpeta para los plugins: crea una carpeta llamada `SwiftBar` en tu carpeta de inicio y elígela.
 3. Descarga [`btc.30s.sh`](btc.30s.sh) y ponlo en esa carpeta. SwiftBar lo activa solo.
-4. Haz clic en **₿** en la barra → **Configura cuántos BTC tienes…** (y lo mismo para ETH).
+4. Haz clic en **₿** en la barra → **Configura cuántos BTC tienes…** (y lo mismo para ETH y SOL, si tienes).
 
 ## Uso
 
 | Opción del menú | Para qué sirve |
 |---|---|
-| Registrar compra de BTC / ETH… | Sumar una compra (cantidad y USD pagados, con comisión) |
-| Ajustar totales → BTC / ETH… | Corregir tus totales, por ejemplo después de pagar comisión de red al mover a tu wallet |
+| Registrar compra → BTC / ETH / SOL… | Sumar una compra (cantidad y USD pagados, con comisión) |
+| Ajustar totales → BTC / ETH / SOL… | Corregir tus totales, por ejemplo después de pagar comisión de red al mover a tu wallet |
 | Historial de compras | Abrir el CSV con todas tus compras registradas |
-| Mostrar en la barra | Rotar (total, BTC y ETH), solo el total, solo BTC, o solo precios |
+| Mostrar en la barra | Rotar (el total y cada moneda), solo el total, solo BTC, o solo precios |
 | Ocultar montos | Esconder tus cantidades y valores |
 
 Para cambiar cada cuánto se actualiza, renombra el archivo: `btc.1m.sh` (cada minuto), `btc.5m.sh` (cada 5 minutos), etc.
